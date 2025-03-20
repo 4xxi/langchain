@@ -100,13 +100,30 @@ export class MistralOcrLoader extends BufferLoader {
     // Convert each page to image using the external utility
     const pages: Buffer[] = [];
     for (let i = 1; i <= pdfData.numpages; i++) {
-      const imageBuffer = await convertPdfToImage(raw, {
-        pageNumber: i,
-        scale: this.pdfImageScale,
-        outputFormat: this.pdfImageFormat,
-        quality: this.pdfImageQuality,
-      });
-      pages.push(imageBuffer);
+      try {
+        const imageBuffer = await convertPdfToImage(raw, {
+          pageNumber: i,
+          scale: this.pdfImageScale,
+          outputFormat: this.pdfImageFormat,
+          quality: this.pdfImageQuality,
+        });
+        pages.push(imageBuffer);
+      } catch (error: unknown) {
+        const err = error as Error;
+        return [
+          new Document({
+            pageContent: "",
+            metadata: {
+              ...baseMetadata,
+              pdf: {
+                ...baseMetadata.pdf,
+                loc: { pageNumber: i },
+                error: err.message,
+              },
+            },
+          }),
+        ];
+      }
     }
 
     // Process pages using appropriate method

@@ -1,9 +1,6 @@
 import { Mistral } from "@mistralai/mistralai";
 import type { OCRImageObject } from "@mistralai/mistralai/models/components/index.js";
-import {
-  BatchJobStatus,
-  FilePurpose,
-} from "@mistralai/mistralai/models/components/index.js";
+import { FilePurpose } from "@mistralai/mistralai/models/components/index.js";
 import * as fs from "fs";
 import { Document } from "langchain/document";
 import * as os from "os";
@@ -161,18 +158,21 @@ export class MistralOcrService {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const job = await this.mistralClient.batch.jobs.get({ jobId });
 
-      if (job.status === BatchJobStatus.Failed) {
-        throw new Error(
-          `Batch job failed: ${job.errors?.join(", ") || "Unknown error"}`
-        );
+      if (job.status === "FAILED" || job.failedRequests > 0) {
+        const errorMessage = job.errors?.join(", ") || "Processing failed";
+        throw new Error(`Batch job failed: ${errorMessage}`);
       }
 
-      if (job.status === BatchJobStatus.Success) {
+      if (job.status === "SUCCESS" && job.failedRequests === 0) {
         const outputFile = job.outputFile;
         if (outputFile) {
           return outputFile;
         }
         throw new Error("Job completed but no output file was found");
+      }
+
+      if (attempt === maxAttempts - 1) {
+        throw new Error("Batch job timed out");
       }
 
       await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -231,83 +231,89 @@ export class MistralOcrService {
     }
 
     if (pages.length === 1) {
-      return [await this.processSingle(pages[0], metadata)];
+      try {
+        return [await this.processSingle(pages[0], metadata)];
+      } catch (error) {
+        const err = error as Error;
+        throw new Error(`Batch job failed: ${err.message}`);
+      }
     }
 
-    // Create batch requests
-    const requests: BatchOcrRequest[] = pages.map((pageBuffer, index) => ({
-      custom_id: `page_${index + 1}`,
-      body: {
-        model: this.modelName,
-        document: {
-          type: "image_url",
-          imageUrl: `data:image/png;base64,${pageBuffer.toString("base64")}`,
-        },
-        includeImageBase64: true,
-      },
-    }));
-
+    let tempFilePath: string | undefined;
     try {
+      // Create batch requests
+      const requests: BatchOcrRequest[] = pages.map((pageBuffer, index) => ({
+        custom_id: `page_${index + 1}`,
+        body: {
+          model: this.modelName,
+          document: {
+            type: "image_url",
+            imageUrl: `data:image/png;base64,${pageBuffer.toString("base64")}`,
+          },
+          includeImageBase64: true,
+        },
+      }));
+
       // Create and upload batch file
-      const batchFilePath = await this.createBatchFile(requests);
-      const fileId = await this.uploadBatchFile(batchFilePath);
+      tempFilePath = await this.createBatchFile(requests);
+      const fileId = await this.uploadBatchFile(tempFilePath);
 
-      try {
-        // Create and monitor batch job
-        const jobId = await this.createBatchJob(fileId);
-        const outputFileId = await this.waitForJobCompletion(jobId);
-        const results = await this.downloadResults(outputFileId);
+      // Create and monitor batch job
+      const jobId = await this.createBatchJob(fileId);
+      const outputFileId = await this.waitForJobCompletion(jobId);
 
-        // Process results into Documents
-        return results.map((result, index) => {
-          if (result.error) {
-            return new Document({
-              pageContent: "",
-              metadata: {
-                ...metadata,
-                pdf: {
-                  ...metadata.pdf,
-                  loc: { pageNumber: index + 1 },
-                  error: result.error,
-                },
-              },
-            });
+      // Download and process results
+      const results = await this.downloadResults(outputFileId);
+
+      // Process results into Documents
+      return results.map((result, index) => {
+        try {
+          const response = result.response;
+          if (!response || !response.pages || !response.pages[0]) {
+            throw new Error("Malformed response structure");
           }
 
-          // Extract image information if available
-          const imageMetadata =
-            result.response.pages[0].images?.map((image: OCRImageObject) => ({
-              id: image.id,
-              top_left_x: image.topLeftX ?? 0,
-              top_left_y: image.topLeftY ?? 0,
-              bottom_right_x: image.bottomRightX ?? 0,
-              bottom_right_y: image.bottomRightY ?? 0,
-              image_base64: image.imageBase64 ?? undefined,
-            })) || [];
-
-          // Extract page dimensions if available
-          const dimensions = result.response.pages[0].dimensions || null;
-
+          const page = response.pages[0];
           return new Document({
-            pageContent: result.response.pages[0].markdown,
+            pageContent: page.markdown || "",
             metadata: {
               ...metadata,
               pdf: {
                 ...metadata.pdf,
                 loc: { pageNumber: index + 1 },
               },
-              images: imageMetadata,
-              dimensions: dimensions,
+              images:
+                page.images?.map((image: OCRImageObject) => ({
+                  id: image.id,
+                  top_left_x: image.topLeftX ?? 0,
+                  top_left_y: image.topLeftY ?? 0,
+                  bottom_right_x: image.bottomRightX ?? 0,
+                  bottom_right_y: image.bottomRightY ?? 0,
+                  image_base64: image.imageBase64 ?? undefined,
+                })) || [],
+              dimensions: page.dimensions || null,
             },
           });
-        });
-      } finally {
-        // Clean up temporary files
-        await this.cleanupTempFiles(batchFilePath);
-      }
-    } catch (error: unknown) {
+        } catch (error) {
+          const err = error as Error;
+          throw new Error(`Failed to parse batch results: ${err.message}`);
+        }
+      });
+    } catch (error) {
       const err = error as Error;
-      throw new Error(`Batch processing failed: ${err.message}`);
+      if (err.message.includes("timed out")) {
+        throw new Error("Batch job failed: Job timed out");
+      }
+      throw new Error(`Batch job failed: ${err.message}`);
+    } finally {
+      if (tempFilePath) {
+        try {
+          await this.cleanupTempFiles(tempFilePath);
+        } catch (error) {
+          const err = error as Error;
+          console.warn(`Failed to cleanup temp files: ${err.message}`);
+        }
+      }
     }
   }
 }

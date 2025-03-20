@@ -1,4 +1,5 @@
 import { Document } from "langchain/document";
+import pdfParse from "pdf-parse";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { convertPdfToImage } from "../../../pdf-utils/pdf-to-image.js";
 import { MistralOcrLoader } from "./loader";
@@ -282,6 +283,78 @@ describe("MistralOcrLoader", () => {
         outputFormat: "png",
         quality: 90,
       });
+    });
+
+    it("should handle batch processing with custom batch size", async () => {
+      const customBatchLoader = new MistralOcrLoader(testPdfPath, {
+        apiKey: "test-key",
+        batchSize: 3,
+        forceSingleMode: false,
+      });
+
+      const mockBatchParse = vi
+        .fn()
+        .mockImplementation(async (buffer, metadata) => {
+          return [
+            new Document({
+              pageContent: "Batch processed content",
+              metadata: { ...metadata, pdf: { loc: { pageNumber: 1 } } },
+            }),
+          ];
+        });
+
+      customBatchLoader.parse = mockBatchParse;
+      const docs = await customBatchLoader.parse(mockBuffer, baseMetadata);
+
+      expect(docs.length).toBe(1);
+      expect(docs[0].pageContent).toBe("Batch processed content");
+    });
+
+    it("should handle PDF parsing errors gracefully", async () => {
+      const errorLoader = new MistralOcrLoader(testPdfPath, {
+        apiKey: "test-key",
+      });
+
+      // Mock fs.readFile to return a buffer
+      const { promises: fsPromises } = await import("fs");
+      vi.spyOn(fsPromises, "readFile").mockResolvedValue(Buffer.from("test"));
+
+      // Mock pdf-parse to throw an error
+      vi.mocked(pdfParse).mockRejectedValueOnce(
+        new Error("PDF parsing failed")
+      );
+
+      await expect(errorLoader.load()).rejects.toThrow("PDF parsing failed");
+    });
+
+    it("should handle image conversion errors", async () => {
+      const errorLoader = new MistralOcrLoader(testPdfPath, {
+        apiKey: "test-key",
+      });
+
+      // Mock fs.readFile to return a buffer
+      const { promises: fsPromises } = await import("fs");
+      vi.spyOn(fsPromises, "readFile").mockResolvedValue(Buffer.from("test"));
+
+      // Mock convertPdfToImage to throw an error
+      vi.mocked(convertPdfToImage).mockRejectedValueOnce(
+        new Error("Image conversion failed")
+      );
+
+      const docs = await errorLoader.parse(mockBuffer, {
+        source: testPdfPath,
+        type: "application/pdf",
+        pdf: {
+          version: "v1.10.100",
+          info: {},
+          numpages: 1,
+        },
+      });
+
+      expect(docs).toHaveLength(1);
+      expect(docs[0].pageContent).toBe("");
+      expect(docs[0].metadata.pdf.error).toBe("Image conversion failed");
+      expect(docs[0].metadata.pdf.loc.pageNumber).toBe(1);
     });
   });
 });

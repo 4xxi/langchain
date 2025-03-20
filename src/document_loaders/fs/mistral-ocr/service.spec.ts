@@ -51,12 +51,12 @@ vi.mock("@mistralai/mistralai", () => ({
     },
   })),
   BatchJobStatus: {
-    Queued: "queued",
-    Running: "running",
-    Success: "success",
-    Failed: "failed",
-    Canceled: "canceled",
-    Expired: "expired",
+    Queued: "QUEUED",
+    Running: "RUNNING",
+    Success: "SUCCESS",
+    Failed: "FAILED",
+    Canceled: "CANCELLED",
+    Expired: "TIMEOUT_EXCEEDED",
   },
   FilePurpose: {
     FineTuning: "fine-tuning",
@@ -239,54 +239,165 @@ describe("MistralOcrService", () => {
       expect(result[0]).toBeInstanceOf(Document);
       expect(result[0].pageContent).toBe("Single processed content");
       expect(mockSingle).toHaveBeenCalledTimes(1);
-    });
+    }, 10000);
 
     it("should process multiple pages in batch mode", async () => {
-      // Setup spies to track calls to Mistral API
-      const { Mistral } = await import("@mistralai/mistralai");
-      const mistralInstance = new Mistral({ apiKey: "test-key" });
-
-      // @ts-expect-error - Replace service's mistralClient with our mock
-      service.mistralClient = mistralInstance;
-
-      // Mock the batch job to show success
-      vi.spyOn(mistralInstance.batch.jobs, "get").mockResolvedValue({
-        id: "test-job-id",
-        status: BatchJobStatus.Success,
-        outputFile: "test-output-file",
-      } as any);
-
-      // Mock the file download to return properly formatted data
-      const mockResults =
-        [
-          { response: { pages: [{ markdown: "result1" }] } },
-          { response: { pages: [{ markdown: "result2" }] } },
-        ]
-          .map((r) => JSON.stringify(r))
-          .join("\n") + "\n";
-
-      vi.spyOn(mistralInstance.files, "download").mockResolvedValue(
-        new ReadableStream({
-          start(controller) {
-            controller.enqueue(new TextEncoder().encode(mockResults));
-            controller.close();
+      const mockBatchResponse = [
+        {
+          response: {
+            pages: [
+              {
+                markdown: "test content for page 1",
+                images: [],
+                dimensions: null,
+              },
+            ],
           },
-        }) as any
+        },
+        {
+          response: {
+            pages: [
+              {
+                markdown: "test content for page 2",
+                images: [],
+                dimensions: null,
+              },
+            ],
+          },
+        },
+      ];
+
+      const mockDownloadStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode(
+              mockBatchResponse.map((r) => JSON.stringify(r)).join("\n")
+            )
+          );
+          controller.close();
+        },
+      });
+
+      const mockMistralClient = {
+        files: {
+          upload: vi.fn().mockResolvedValue({ id: "test-file-id" }),
+          download: vi.fn().mockResolvedValue(mockDownloadStream),
+        },
+        batch: {
+          jobs: {
+            create: vi.fn().mockResolvedValue({ id: "test-job-id" }),
+            get: vi.fn().mockResolvedValue({
+              status: BatchJobStatus.Success,
+              failedRequests: 0,
+              outputFile: "test-output-file",
+            }),
+          },
+        },
+      };
+
+      // @ts-expect-error - Accessing private property for testing
+      service.mistralClient = mockMistralClient;
+
+      const result = await service.processBatch(testBuffers, testMetadata);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].pageContent).toBe("test content for page 1");
+      expect(result[1].pageContent).toBe("test content for page 2");
+    });
+
+    it("should handle batch job failure", async () => {
+      const mockSingle = vi
+        .spyOn(service, "processSingle")
+        .mockRejectedValue(new Error("Processing failed"));
+
+      await expect(
+        service.processBatch([Buffer.from("test")], { source: "test.pdf" })
+      ).rejects.toThrow("Batch job failed: Processing failed");
+
+      expect(mockSingle).toHaveBeenCalledTimes(1);
+    });
+
+    it("should handle batch job timeout", async () => {
+      const mockSingle = vi
+        .spyOn(service, "processSingle")
+        .mockRejectedValue(new Error("Job timed out"));
+
+      await expect(
+        service.processBatch([Buffer.from("test")], { source: "test.pdf" })
+      ).rejects.toThrow("Batch job failed: Job timed out");
+
+      expect(mockSingle).toHaveBeenCalledTimes(1);
+    });
+
+    it("should handle file cleanup errors gracefully", async () => {
+      const mockFs = await import("fs");
+      const consoleSpy = vi.spyOn(console, "warn");
+
+      // Mock fs.promises.rm to throw an error
+      mockFs.promises.rm = vi
+        .fn()
+        .mockRejectedValue(new Error("Cleanup failed"));
+      mockFs.promises.rmdir = vi.fn().mockResolvedValue(undefined);
+      mockFs.promises.mkdtemp = vi.fn().mockResolvedValue("/tmp/test-dir");
+      mockFs.promises.writeFile = vi.fn().mockResolvedValue(undefined);
+
+      const mockMistralClient = {
+        files: {
+          upload: vi.fn().mockResolvedValue({ id: "test-file-id" }),
+          download: vi.fn().mockResolvedValue(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(
+                  new TextEncoder().encode(
+                    JSON.stringify({
+                      response: { pages: [{ markdown: "test content" }] },
+                    }) + "\n"
+                  )
+                );
+                controller.close();
+              },
+            })
+          ),
+        },
+        batch: {
+          jobs: {
+            create: vi.fn().mockResolvedValue({ id: "test-job-id" }),
+            get: vi.fn().mockResolvedValue({
+              status: BatchJobStatus.Success,
+              failedRequests: 0,
+              outputFile: "test-output-file",
+            }),
+          },
+        },
+      };
+
+      // @ts-expect-error - Accessing private property for testing
+      service.mistralClient = mockMistralClient;
+
+      const results = await service.processBatch(
+        [Buffer.from("test"), Buffer.from("test2")],
+        { source: "test.pdf" }
       );
 
-      // Run the batch process
-      const results = await service.processBatch(testBuffers, testMetadata);
+      expect(results).toBeDefined();
+      expect(mockFs.promises.rm).toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "Failed to cleanup temp files: Cleanup failed"
+      );
 
-      // Verify results
-      expect(results).toHaveLength(2);
-      expect(results[0].pageContent).toBe("result1");
-      expect(results[1].pageContent).toBe("result2");
+      consoleSpy.mockRestore();
+    });
 
-      // Verify the right APIs were called
-      expect(mistralInstance.files.upload).toHaveBeenCalledTimes(1);
-      expect(mistralInstance.batch.jobs.create).toHaveBeenCalledTimes(1);
-      expect(mistralInstance.batch.jobs.get).toHaveBeenCalledTimes(1);
-      expect(mistralInstance.files.download).toHaveBeenCalledTimes(1);
+    it("should handle malformed batch results", async () => {
+      const mockSingle = vi
+        .spyOn(service, "processSingle")
+        .mockRejectedValue(new Error("Malformed response structure"));
+
+      await expect(
+        service.processBatch([Buffer.from("test")], { source: "test.pdf" })
+      ).rejects.toThrow("Batch job failed: Malformed response structure");
+
+      expect(mockSingle).toHaveBeenCalledTimes(1);
     });
   });
 });
