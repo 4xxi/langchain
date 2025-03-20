@@ -8,8 +8,6 @@ export interface MistralOcrLoaderConfig {
   apiKey: string;
   modelName?: string;
   splitPages?: boolean;
-  batchSize?: number;
-  forceSingleMode?: boolean;
   pdfImageScale?: number;
   pdfImageQuality?: number;
   pdfImageFormat?: "png" | "jpeg" | "webp";
@@ -18,9 +16,7 @@ export interface MistralOcrLoaderConfig {
 export class MistralOcrLoader extends BufferLoader {
   private readonly modelName: string;
   private readonly splitPages: boolean;
-  private readonly batchSize: number;
   private readonly ocrService: MistralOcrService;
-  private readonly forceSingleMode: boolean;
   private readonly pdfImageScale: number;
   private readonly pdfImageQuality: number;
   private readonly pdfImageFormat: "png" | "jpeg" | "webp";
@@ -32,8 +28,6 @@ export class MistralOcrLoader extends BufferLoader {
     }
     this.modelName = config.modelName || "mistral-ocr-latest";
     this.splitPages = config.splitPages ?? true;
-    this.batchSize = config.batchSize ?? 5;
-    this.forceSingleMode = config.forceSingleMode ?? true;
     this.pdfImageScale = config.pdfImageScale ?? 2.0;
     this.pdfImageQuality = config.pdfImageQuality ?? 100;
     this.pdfImageFormat = config.pdfImageFormat ?? "png";
@@ -44,7 +38,7 @@ export class MistralOcrLoader extends BufferLoader {
   }
 
   /**
-   * Process pages using either single or batch mode
+   * Process pages using single mode
    * @param pages Array of page image buffers
    * @param metadata Document metadata
    * @returns Array of processed documents
@@ -57,26 +51,15 @@ export class MistralOcrLoader extends BufferLoader {
       return [];
     }
 
-    if (this.forceSingleMode || pages.length === 1) {
-      // Process pages one by one
-      const documents: Document[] = [];
-      for (let i = 0; i < pages.length; i++) {
-        const doc = await this.ocrService.processSingle(
-          pages[i],
-          metadata,
-          i + 1
-        );
-        documents.push(doc);
-      }
-      return documents;
-    }
-
-    // Use batch processing for multiple pages
+    // Process pages one by one
     const documents: Document[] = [];
-    for (let i = 0; i < pages.length; i += this.batchSize) {
-      const batch = pages.slice(i, i + this.batchSize);
-      const batchDocs = await this.ocrService.processBatch(batch, metadata);
-      documents.push(...batchDocs);
+    for (let i = 0; i < pages.length; i++) {
+      const doc = await this.ocrService.processSingle(
+        pages[i],
+        metadata,
+        i + 1
+      );
+      documents.push(doc);
     }
     return documents;
   }

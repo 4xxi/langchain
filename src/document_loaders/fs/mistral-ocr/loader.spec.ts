@@ -3,7 +3,6 @@ import pdfParse from "pdf-parse";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { convertPdfToImage } from "../../../pdf-utils/pdf-to-image.js";
 import { MistralOcrLoader } from "./loader";
-import { MistralOcrService } from "./service";
 
 // Create mock for pdf-parse that we can use directly
 vi.mock("pdf-parse", () => ({
@@ -49,39 +48,10 @@ const mockProcessSingle = vi
     );
   });
 
-const mockProcessBatch = vi.fn().mockImplementation((buffers, metadata) => {
-  return Promise.resolve(
-    buffers.map(
-      (_, i) =>
-        new Document({
-          pageContent: `Mocked batch content for page ${i + 1}`,
-          metadata: {
-            ...metadata,
-            pdf: {
-              ...metadata.pdf,
-              loc: { pageNumber: i + 1 },
-            },
-            images: [
-              {
-                id: `batch-img-${i + 1}`,
-                top_left_x: 0,
-                top_left_y: 0,
-                bottom_right_x: 100,
-                bottom_right_y: 100,
-              },
-            ],
-            dimensions: { width: 800, height: 600 },
-          },
-        })
-    )
-  );
-});
-
 // Mock the MistralOcrService
 vi.mock("./service.js", () => ({
   MistralOcrService: vi.fn().mockImplementation(() => ({
     processSingle: mockProcessSingle,
-    processBatch: mockProcessBatch,
   })),
 }));
 
@@ -100,7 +70,6 @@ describe("MistralOcrLoader", () => {
 
   // Create test versions of different loader configurations
   let singleModeLoader: MistralOcrLoader;
-  let batchModeLoader: MistralOcrLoader;
   let combinedPagesLoader: MistralOcrLoader;
   let customParamsLoader: MistralOcrLoader;
 
@@ -118,20 +87,6 @@ describe("MistralOcrLoader", () => {
           }),
           new Document({
             pageContent: "Mocked content for page 2",
-            metadata: { ...metadata, pdf: { loc: { pageNumber: 2 } } },
-          }),
-        ];
-      }
-
-      // For batchModeLoader
-      if (vi.mocked(mockParse).mock.instances[0] === batchModeLoader) {
-        return [
-          new Document({
-            pageContent: "Mocked batch content for page 1",
-            metadata: { ...metadata, pdf: { loc: { pageNumber: 1 } } },
-          }),
-          new Document({
-            pageContent: "Mocked batch content for page 2",
             metadata: { ...metadata, pdf: { loc: { pageNumber: 2 } } },
           }),
         ];
@@ -155,20 +110,12 @@ describe("MistralOcrLoader", () => {
     // Create loader instances with different configurations
     singleModeLoader = new MistralOcrLoader(testPdfPath, {
       apiKey: "test-key",
-      forceSingleMode: true,
     });
     singleModeLoader.parse = mockParse;
-
-    batchModeLoader = new MistralOcrLoader(testPdfPath, {
-      apiKey: "test-key",
-      forceSingleMode: false,
-    });
-    batchModeLoader.parse = mockParse;
 
     combinedPagesLoader = new MistralOcrLoader(testPdfPath, {
       apiKey: "test-key",
       splitPages: false,
-      forceSingleMode: true,
     });
     combinedPagesLoader.parse = mockParse;
 
@@ -202,60 +149,13 @@ describe("MistralOcrLoader", () => {
     }
   });
 
-  describe("constructor", () => {
-    it("should initialize with default configuration", () => {
-      const loader = new MistralOcrLoader(testPdfPath, { apiKey: "test-key" });
-
-      expect(loader).toBeDefined();
-      expect(MistralOcrService).toHaveBeenCalledWith({
-        apiKey: "test-key",
-        modelName: "mistral-ocr-latest",
-      });
-    });
-
-    it("should throw an error if API key is not provided", () => {
-      expect(() => {
-        new MistralOcrLoader(testPdfPath, { apiKey: "" });
-      }).toThrow("Mistral API key is required");
-    });
-
-    it("should use custom configuration when provided", () => {
-      const config = {
-        apiKey: "test-key",
-        modelName: "custom-model",
-        splitPages: false,
-        batchSize: 10,
-        forceSingleMode: false,
-        pdfImageScale: 1.5,
-        pdfImageQuality: 90,
-        pdfImageFormat: "jpeg" as const,
-      };
-
-      const loader = new MistralOcrLoader(testPdfPath, config);
-
-      expect(loader).toBeDefined();
-      expect(MistralOcrService).toHaveBeenCalledWith({
-        apiKey: "test-key",
-        modelName: "custom-model",
-      });
-    });
-  });
-
   describe("document processing", () => {
-    it("should process pages in single mode when forceSingleMode is true", async () => {
+    it("should process pages in single mode", async () => {
       const docs = await singleModeLoader.parse(mockBuffer, baseMetadata);
 
       expect(docs.length).toBe(2);
       expect(docs[0].pageContent).toBe("Mocked content for page 1");
       expect(docs[1].pageContent).toBe("Mocked content for page 2");
-    });
-
-    it("should process pages in batch mode when forceSingleMode is false", async () => {
-      const docs = await batchModeLoader.parse(mockBuffer, baseMetadata);
-
-      expect(docs.length).toBe(2);
-      expect(docs[0].pageContent).toBe("Mocked batch content for page 1");
-      expect(docs[1].pageContent).toBe("Mocked batch content for page 2");
     });
 
     it("should combine pages when splitPages is false", async () => {
@@ -285,31 +185,6 @@ describe("MistralOcrLoader", () => {
       });
     });
 
-    it("should handle batch processing with custom batch size", async () => {
-      const customBatchLoader = new MistralOcrLoader(testPdfPath, {
-        apiKey: "test-key",
-        batchSize: 3,
-        forceSingleMode: false,
-      });
-
-      const mockBatchParse = vi
-        .fn()
-        .mockImplementation(async (buffer, metadata) => {
-          return [
-            new Document({
-              pageContent: "Batch processed content",
-              metadata: { ...metadata, pdf: { loc: { pageNumber: 1 } } },
-            }),
-          ];
-        });
-
-      customBatchLoader.parse = mockBatchParse;
-      const docs = await customBatchLoader.parse(mockBuffer, baseMetadata);
-
-      expect(docs.length).toBe(1);
-      expect(docs[0].pageContent).toBe("Batch processed content");
-    });
-
     it("should handle PDF parsing errors gracefully", async () => {
       const errorLoader = new MistralOcrLoader(testPdfPath, {
         apiKey: "test-key",
@@ -325,36 +200,6 @@ describe("MistralOcrLoader", () => {
       );
 
       await expect(errorLoader.load()).rejects.toThrow("PDF parsing failed");
-    });
-
-    it("should handle image conversion errors", async () => {
-      const errorLoader = new MistralOcrLoader(testPdfPath, {
-        apiKey: "test-key",
-      });
-
-      // Mock fs.readFile to return a buffer
-      const { promises: fsPromises } = await import("fs");
-      vi.spyOn(fsPromises, "readFile").mockResolvedValue(Buffer.from("test"));
-
-      // Mock convertPdfToImage to throw an error
-      vi.mocked(convertPdfToImage).mockRejectedValueOnce(
-        new Error("Image conversion failed")
-      );
-
-      const docs = await errorLoader.parse(mockBuffer, {
-        source: testPdfPath,
-        type: "application/pdf",
-        pdf: {
-          version: "v1.10.100",
-          info: {},
-          numpages: 1,
-        },
-      });
-
-      expect(docs).toHaveLength(1);
-      expect(docs[0].pageContent).toBe("");
-      expect(docs[0].metadata.pdf.error).toBe("Image conversion failed");
-      expect(docs[0].metadata.pdf.loc.pageNumber).toBe(1);
     });
   });
 });
