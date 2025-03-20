@@ -18,6 +18,7 @@ coverage/
 .env.development.local
 .env.test.local
 .env.production.local
+.secrets
 
 # Debug
 npm-debug.log*
@@ -28,4 +29,4 @@ yarn-error.log*
 .idea/
 .vscode/
 *.swp
-*.swo 
+*.swo

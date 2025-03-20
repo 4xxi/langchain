@@ -12,12 +12,11 @@ export class MistralOcrService {
   }
 
   /**
-   * Process a single page using OCR
+   * Process an image using OCR
    */
-  async processSingle(
+  async processImage(
     buffer: Buffer,
-    metadata: Document["metadata"],
-    pageNumber?: number
+    metadata: Document["metadata"]
   ): Promise<Document> {
     try {
       // Determine the image format from the buffer magic numbers
@@ -46,10 +45,6 @@ export class MistralOcrService {
         pageContent: page.markdown || "",
         metadata: {
           ...metadata,
-          pdf: {
-            ...metadata.pdf,
-            loc: pageNumber ? { pageNumber } : undefined,
-          },
           images:
             page.images?.map((image: OCRImageObject) => ({
               id: image.id,
@@ -61,6 +56,55 @@ export class MistralOcrService {
             })) || [],
           dimensions: page.dimensions || null,
         },
+      });
+    } catch (error) {
+      const err = error as Error;
+      throw new Error(`OCR processing failed: ${err.message}`);
+    }
+  }
+
+  /**
+   * Process a PDF file using OCR
+   */
+  async processPdf(
+    buffer: Buffer,
+    metadata: Document["metadata"]
+  ): Promise<Document[]> {
+    try {
+      const response = await this.mistralClient.ocr.process({
+        model: this.modelName,
+        document: {
+          type: "document_url",
+          documentUrl: `data:application/pdf;base64,${buffer.toString("base64")}`,
+        },
+        includeImageBase64: true,
+      });
+
+      if (!response.pages) {
+        throw new Error("Malformed response structure");
+      }
+
+      return response.pages.map((page, index) => {
+        return new Document({
+          pageContent: page.markdown || "",
+          metadata: {
+            ...metadata,
+            pdf: {
+              ...metadata.pdf,
+              loc: { pageNumber: index + 1 },
+            },
+            images:
+              page.images?.map((image: OCRImageObject) => ({
+                id: image.id,
+                top_left_x: image.topLeftX ?? 0,
+                top_left_y: image.topLeftY ?? 0,
+                bottom_right_x: image.bottomRightX ?? 0,
+                bottom_right_y: image.bottomRightY ?? 0,
+                image_base64: image.imageBase64 ?? undefined,
+              })) || [],
+            dimensions: page.dimensions || null,
+          },
+        });
       });
     } catch (error) {
       const err = error as Error;

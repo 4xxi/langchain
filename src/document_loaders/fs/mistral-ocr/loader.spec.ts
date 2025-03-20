@@ -1,6 +1,5 @@
 import { Document } from "langchain/document";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import * as pdfToImage from "../../../pdf-utils/pdf-to-image";
 import { MistralOcrLoader } from "./loader";
 import { MistralOcrService } from "./service";
 
@@ -15,7 +14,6 @@ vi.mock("pdf-parse", () => ({
     text: "test content",
   }),
 }));
-vi.mock("../../../pdf-utils/pdf-to-image");
 vi.mock("./service");
 
 describe("MistralOcrLoader", () => {
@@ -59,55 +57,79 @@ describe("MistralOcrLoader", () => {
 
     describe("PDF handling", () => {
       beforeEach(() => {
-        vi.mocked(pdfToImage.convertPdfToImage).mockResolvedValue(
-          Buffer.from("image")
-        );
-
-        vi.mocked(MistralOcrService.prototype.processSingle).mockResolvedValue(
+        vi.mocked(MistralOcrService.prototype.processPdf).mockResolvedValue([
           new Document({
             pageContent: "test content",
-            metadata: {},
-          })
-        );
+            metadata: {
+              source: "test.pdf",
+              pdf: {
+                version: "v1.10.100",
+                info: {},
+                metadata: {},
+                totalPages: 1,
+                loc: { pageNumber: 1 },
+              },
+            },
+          }),
+        ]);
       });
 
-      it("should process PDF directly when forceImageConversion is false", async () => {
+      it("should process PDF and extract metadata", async () => {
         const docs = await loader.parse(mockBuffer, mockMetadata);
         expect(docs).toHaveLength(1);
         expect(docs[0].pageContent).toBe("test content");
-        expect(pdfToImage.convertPdfToImage).not.toHaveBeenCalled();
+        expect(docs[0].metadata).toHaveProperty("pdf");
+        expect(docs[0].metadata.pdf).toHaveProperty("version", "v1.10.100");
       });
 
-      it("should convert PDF to images when forceImageConversion is true", async () => {
+      it("should combine pages when splitPages is false", async () => {
         loader = new MistralOcrLoader("test.pdf", {
           apiKey: mockApiKey,
-          forceImageConversion: true,
+          splitPages: false,
         });
+
+        vi.mocked(MistralOcrService.prototype.processPdf).mockResolvedValue([
+          new Document({
+            pageContent: "page 1",
+            metadata: {
+              source: "test.pdf",
+              pdf: {
+                version: "v1.10.100",
+                info: {},
+                metadata: {},
+                totalPages: 2,
+                loc: { pageNumber: 1 },
+              },
+            },
+          }),
+          new Document({
+            pageContent: "page 2",
+            metadata: {
+              source: "test.pdf",
+              pdf: {
+                version: "v1.10.100",
+                info: {},
+                metadata: {},
+                totalPages: 2,
+                loc: { pageNumber: 2 },
+              },
+            },
+          }),
+        ]);
 
         const docs = await loader.parse(mockBuffer, mockMetadata);
         expect(docs).toHaveLength(1);
-        expect(pdfToImage.convertPdfToImage).toHaveBeenCalled();
+        expect(docs[0].pageContent).toBe("page 1\n\npage 2");
       });
 
-      it("should handle PDF conversion errors", async () => {
-        vi.mocked(pdfToImage.convertPdfToImage).mockRejectedValue(
-          new Error("conversion error")
-        );
-
-        // Mock service to throw error
-        vi.mocked(MistralOcrService.prototype.processSingle).mockRejectedValue(
+      it("should handle OCR processing errors", async () => {
+        vi.mocked(MistralOcrService.prototype.processPdf).mockRejectedValue(
           new Error("OCR failed")
         );
 
-        loader = new MistralOcrLoader("test.pdf", {
-          apiKey: mockApiKey,
-          forceImageConversion: true,
-        });
-
-        const docs = await loader.parse(mockBuffer, mockMetadata);
-        expect(docs).toHaveLength(1);
-        expect(docs[0].pageContent).toBe("");
-        expect(docs[0].metadata.pdf.error).toBe("conversion error");
+        await expect(loader.parse(mockBuffer, mockMetadata)).rejects.toThrow(
+          "OCR failed"
+        );
       });
     });
 
@@ -117,11 +139,14 @@ describe("MistralOcrLoader", () => {
           apiKey: mockApiKey,
         });
 
-        // Reset and setup mock for image processing
-        vi.mocked(MistralOcrService.prototype.processSingle).mockResolvedValue(
+        vi.mocked(MistralOcrService.prototype.processImage).mockResolvedValue(
           new Document({
             pageContent: "test content",
-            metadata: {},
+            metadata: {
+              source: "test.jpg",
+              images: [],
+              dimensions: null,
+            },
           })
         );
       });
@@ -129,7 +154,7 @@ describe("MistralOcrLoader", () => {
       it("should process image files directly", async () => {
         const docs = await loader.parse(mockBuffer, { source: "test.jpg" });
         expect(docs).toHaveLength(1);
-        expect(MistralOcrService.prototype.processSingle).toHaveBeenCalledWith(
+        expect(MistralOcrService.prototype.processImage).toHaveBeenCalledWith(
           mockBuffer,
           { source: "test.jpg" }
         );

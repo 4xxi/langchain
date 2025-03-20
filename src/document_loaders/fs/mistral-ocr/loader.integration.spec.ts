@@ -9,31 +9,51 @@ import { MistralOcrLoader } from "./loader";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Helper function to verify file existence
+const verifyFileExists = (filePath: string): void => {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Test file not found: ${filePath}`);
+  }
+  console.log(`Found test file: ${filePath}`);
+};
+
 describe("MistralOcrLoader Integration", () => {
   let apiKey: string;
   let tempDir: string;
+  let exampleDataDir: string;
+  let samplePdfPath: string;
+  let largerPdfPath: string;
 
   beforeAll(() => {
-    // Load test environment variables
+    // Try loading from .env.test.local first
     dotenv.config({ path: ".env.test.local" });
-    apiKey = process.env.MISTRAL_API_KEY!;
+
+    // Get API key from .env.test.local or environment variable
+    apiKey = process.env.MISTRAL_API_KEY as string;
 
     if (!apiKey) {
       throw new Error(
-        "MISTRAL_API_KEY environment variable is required in .env.test.local"
+        "MISTRAL_API_KEY is required. Set it in .env.test.local for local development or as an environment variable for CI"
       );
     }
 
     // Create temp directory
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "mistral-ocr-test-"));
+
+    // Set up example data directory path
+    exampleDataDir = path.resolve(__dirname, "../../../../example_data");
+    console.log(`Using example data directory: ${exampleDataDir}`);
+
+    // Set up test file paths
+    samplePdfPath = path.resolve(exampleDataDir, "file-sample_150kB.pdf");
+    largerPdfPath = path.resolve(exampleDataDir, "nke-10k-2023.pdf");
+
+    // Verify test files exist
+    verifyFileExists(samplePdfPath);
+    verifyFileExists(largerPdfPath);
   });
 
   describe("PDF Processing", () => {
-    const samplePdfPath = path.join(
-      __dirname,
-      "../../../../example_data/file-sample_150kB.pdf"
-    );
-
     it("should process PDF file with default settings", async () => {
       const loader = new MistralOcrLoader(samplePdfPath, {
         apiKey,
@@ -43,6 +63,9 @@ describe("MistralOcrLoader Integration", () => {
 
       const docs = await loader.load();
       expect(docs.length).toBeGreaterThan(0);
+      console.dir(docs, {
+        depth: 5,
+      });
 
       // Verify each document has content and metadata
       docs.forEach((doc, index) => {
@@ -50,28 +73,9 @@ describe("MistralOcrLoader Integration", () => {
         expect(doc.metadata).toBeDefined();
         expect(doc.metadata.pdf).toBeDefined();
         expect(doc.metadata.pdf.loc.pageNumber).toBe(index + 1);
-      });
-    });
-
-    it("should process PDF file with forced image conversion", async () => {
-      const loader = new MistralOcrLoader(samplePdfPath, {
-        apiKey,
-        splitPages: true,
-        forceImageConversion: true,
-        pdfImageFormat: "png",
-        pdfImageQuality: 100,
-        modelName: "mistral-ocr-latest",
-      });
-
-      const docs = await loader.load();
-      expect(docs.length).toBeGreaterThan(0);
-
-      // Verify each document has content and metadata
-      docs.forEach((doc, index) => {
-        expect(doc.pageContent).toBeTruthy();
-        expect(doc.metadata).toBeDefined();
-        expect(doc.metadata.pdf).toBeDefined();
-        expect(doc.metadata.pdf.loc.pageNumber).toBe(index + 1);
+        expect(doc.metadata.pdf.version).toBeDefined();
+        expect(doc.metadata.pdf.info).toBeDefined();
+        expect(doc.metadata.pdf.totalPages).toBeGreaterThan(0);
       });
     }, 30000);
 
@@ -86,20 +90,50 @@ describe("MistralOcrLoader Integration", () => {
       expect(docs).toHaveLength(1);
       expect(docs[0].pageContent).toBeTruthy();
       expect(docs[0].metadata.pdf).toBeDefined();
-    });
+      expect(docs[0].metadata.pdf.version).toBeDefined();
+      expect(docs[0].metadata.pdf.info).toBeDefined();
+      expect(docs[0].metadata.pdf.totalPages).toBeGreaterThan(0);
+    }, 30000);
+
+    it("should process a larger PDF file", async () => {
+      const loader = new MistralOcrLoader(largerPdfPath, {
+        apiKey,
+        splitPages: true,
+        modelName: "mistral-ocr-latest",
+      });
+
+      const docs = await loader.load();
+      expect(docs.length).toBeGreaterThan(0);
+
+      // Verify each document has content and metadata
+      docs.forEach((doc, index) => {
+        expect(doc.pageContent).toBeTruthy();
+        expect(doc.metadata).toBeDefined();
+        expect(doc.metadata.pdf).toBeDefined();
+        expect(doc.metadata.pdf.loc.pageNumber).toBe(index + 1);
+        expect(doc.metadata.pdf.version).toBeDefined();
+        expect(doc.metadata.pdf.info).toBeDefined();
+        expect(doc.metadata.pdf.totalPages).toBeGreaterThan(0);
+      });
+    }, 60000);
   });
 
   describe("Image Processing", () => {
     const imageFormats = [".jpg", ".png", ".webp"];
+    let imagePaths: string[];
 
-    imageFormats.forEach((format) => {
-      const sampleImagePath = path.join(
-        __dirname,
-        `../../../../example_data/sample${format}`
-      );
+    beforeAll(() => {
+      // Set up and verify all test image paths
+      imagePaths = imageFormats.map((format) => {
+        const imagePath = path.resolve(exampleDataDir, `sample${format}`);
+        verifyFileExists(imagePath);
+        return imagePath;
+      });
+    });
 
+    imageFormats.forEach((format, index) => {
       it(`should process ${format} image file`, async () => {
-        const loader = new MistralOcrLoader(sampleImagePath, {
+        const loader = new MistralOcrLoader(imagePaths[index], {
           apiKey,
           modelName: "mistral-ocr-latest",
         });
@@ -108,7 +142,9 @@ describe("MistralOcrLoader Integration", () => {
         expect(docs).toHaveLength(1);
         expect(docs[0].pageContent).toBeTruthy();
         expect(docs[0].metadata).toBeDefined();
-      });
+        expect(docs[0].metadata.images).toBeDefined();
+        expect(docs[0].metadata.dimensions).toBeDefined();
+      }, 30000);
     });
   });
 
@@ -119,7 +155,9 @@ describe("MistralOcrLoader Integration", () => {
         modelName: "mistral-ocr-latest",
       });
 
-      await expect(loader.load()).rejects.toThrow();
+      await expect(loader.load()).rejects.toThrow(
+        "File not found: non-existent.pdf"
+      );
     });
 
     it("should handle unsupported file type", async () => {

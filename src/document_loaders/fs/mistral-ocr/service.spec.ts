@@ -23,18 +23,17 @@ describe("MistralOcrService", () => {
     });
   });
 
-  describe("processSingle", () => {
+  describe("processImage", () => {
     const testBuffer = Buffer.from("test");
-    const testMetadata = { source: "test.pdf" };
+    const testMetadata = { source: "test.jpg" };
 
-    it("should process a single page successfully", async () => {
-      const result = await service.processSingle(testBuffer, testMetadata, 1);
+    it("should process an image successfully", async () => {
+      const result = await service.processImage(testBuffer, testMetadata);
 
       expect(result).toBeInstanceOf(Document);
       expect(result.pageContent).toBe("test content");
       expect(result.metadata).toEqual({
-        source: "test.pdf",
-        pdf: { loc: { pageNumber: 1 } },
+        source: "test.jpg",
         images: [],
         dimensions: null,
       });
@@ -51,7 +50,7 @@ describe("MistralOcrService", () => {
       service.mistralClient = mockMistralClient;
 
       await expect(
-        service.processSingle(testBuffer, testMetadata)
+        service.processImage(testBuffer, testMetadata)
       ).rejects.toThrow("OCR processing failed: OCR failed");
     });
 
@@ -66,7 +65,69 @@ describe("MistralOcrService", () => {
       service.mistralClient = mockMistralClient;
 
       await expect(
-        service.processSingle(testBuffer, testMetadata)
+        service.processImage(testBuffer, testMetadata)
+      ).rejects.toThrow("Malformed response structure");
+    });
+  });
+
+  describe("processPdf", () => {
+    const testBuffer = Buffer.from("test");
+    const testMetadata = { source: "test.pdf" };
+
+    it("should process a PDF successfully", async () => {
+      const mockMistralClient = {
+        ocr: {
+          process: vi.fn().mockResolvedValue({
+            pages: [{ markdown: "page 1" }, { markdown: "page 2" }],
+          }),
+        },
+      };
+
+      // @ts-expect-error - Accessing private property for testing
+      service.mistralClient = mockMistralClient;
+
+      const results = await service.processPdf(testBuffer, testMetadata);
+
+      expect(results).toHaveLength(2);
+      expect(results[0]).toBeInstanceOf(Document);
+      expect(results[0].pageContent).toBe("page 1");
+      expect(results[0].metadata).toEqual({
+        source: "test.pdf",
+        pdf: {
+          loc: { pageNumber: 1 },
+        },
+        images: [],
+        dimensions: null,
+      });
+    });
+
+    it("should handle OCR processing errors", async () => {
+      const mockMistralClient = {
+        ocr: {
+          process: vi.fn().mockRejectedValue(new Error("OCR failed")),
+        },
+      };
+
+      // @ts-expect-error - Accessing private property for testing
+      service.mistralClient = mockMistralClient;
+
+      await expect(
+        service.processPdf(testBuffer, testMetadata)
+      ).rejects.toThrow("OCR processing failed: OCR failed");
+    });
+
+    it("should handle malformed response structure", async () => {
+      const mockMistralClient = {
+        ocr: {
+          process: vi.fn().mockResolvedValue({}),
+        },
+      };
+
+      // @ts-expect-error - Accessing private property for testing
+      service.mistralClient = mockMistralClient;
+
+      await expect(
+        service.processPdf(testBuffer, testMetadata)
       ).rejects.toThrow("Malformed response structure");
     });
   });

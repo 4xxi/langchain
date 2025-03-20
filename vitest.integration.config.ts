@@ -8,8 +8,6 @@ export default defineConfig({
       "**/node_modules/**",
       "**/dist/**",
       "**/.{idea,git,cache,output,temp}/**",
-      "**/dist/**",
-      "**/.{idea,git,cache,output,temp}/**",
     ],
   },
 });
