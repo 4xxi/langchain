@@ -1,27 +1,39 @@
-# Source files
-src/
-tests/
-example_data/
-examples/
-
-# Configuration files
-.eslintrc.cjs
-.prettierrc
-.gitignore
-tsconfig.json
-build.js
-build.watch.js
-
-# Environment files
-.env
-.env.*
-
-# Build artifacts
-coverage/
+# Dependencies
 node_modules/
-.DS_Store
+.pnp
+.pnp.js
 
-# Debug logs
+# Source control
+.git
+.gitignore
+
+# Environment and secrets
+.env*
+.secrets
+*.env
+*.secret
+*.key
+
+# Testing
+coverage/
+__tests__/
+*.test.*
+*.spec.*
+
+# Development
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and debugging
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log* 
+yarn-error.log*
+
+# Build artifacts
+build/
+*.tsbuildinfo
+
+# Misc
+.DS_Store 
