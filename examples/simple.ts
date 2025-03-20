@@ -24,7 +24,6 @@ async function main() {
   const loader = new MistralOcrLoader(pdfPath, {
     apiKey,
     splitPages: true,
-    forceSingleMode: true,
     modelName: "mistral-ocr-latest",
   });
 
