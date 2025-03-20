@@ -1,5 +1,6 @@
 import { Document } from "langchain/document";
 import { BufferLoader } from "langchain/document_loaders/fs/buffer";
+import path from "path";
 import pdfParse from "pdf-parse";
 import { convertPdfToImage } from "../../../pdf-utils/pdf-to-image.js";
 import { MistralOcrService } from "./service.js";
@@ -11,6 +12,8 @@ export interface MistralOcrLoaderConfig {
   pdfImageScale?: number;
   pdfImageQuality?: number;
   pdfImageFormat?: "png" | "jpeg" | "webp";
+  forceImageConversion?: boolean;
+  supportedImageTypes?: string[];
 }
 
 export class MistralOcrLoader extends BufferLoader {
@@ -20,6 +23,8 @@ export class MistralOcrLoader extends BufferLoader {
   private readonly pdfImageScale: number;
   private readonly pdfImageQuality: number;
   private readonly pdfImageFormat: "png" | "jpeg" | "webp";
+  private readonly forceImageConversion: boolean;
+  private readonly supportedImageTypes: string[];
 
   constructor(filePathOrBlob: string | Blob, config: MistralOcrLoaderConfig) {
     super(filePathOrBlob);
@@ -31,6 +36,17 @@ export class MistralOcrLoader extends BufferLoader {
     this.pdfImageScale = config.pdfImageScale ?? 2.0;
     this.pdfImageQuality = config.pdfImageQuality ?? 100;
     this.pdfImageFormat = config.pdfImageFormat ?? "png";
+    this.forceImageConversion = config.forceImageConversion ?? false;
+    this.supportedImageTypes = config.supportedImageTypes ?? [
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".webp",
+      ".tiff",
+      ".bmp",
+      ".gif",
+      ".pdf",
+    ];
     this.ocrService = new MistralOcrService({
       apiKey: config.apiKey,
       modelName: this.modelName,
@@ -64,12 +80,29 @@ export class MistralOcrLoader extends BufferLoader {
     return documents;
   }
 
-  public async parse(
-    raw: Buffer,
+  private isImageFile(filePath: string): boolean {
+    const ext = path.extname(filePath).toLowerCase();
+    return this.supportedImageTypes.includes(ext) && ext !== ".pdf";
+  }
+
+  private isPdfFile(filePath: string): boolean {
+    return path.extname(filePath).toLowerCase() === ".pdf";
+  }
+
+  private async processImageFile(
+    buffer: Buffer,
     metadata: Document["metadata"]
   ): Promise<Document[]> {
-    const pdfData = await pdfParse(raw);
+    // For image files, we can process them directly
+    const doc = await this.ocrService.processSingle(buffer, metadata);
+    return [doc];
+  }
 
+  private async processPdfFile(
+    buffer: Buffer,
+    metadata: Document["metadata"]
+  ): Promise<Document[]> {
+    const pdfData = await pdfParse(buffer);
     const baseMetadata = {
       ...metadata,
       pdf: {
@@ -80,47 +113,89 @@ export class MistralOcrLoader extends BufferLoader {
       },
     };
 
-    // Convert each page to image using the external utility
-    const pages: Buffer[] = [];
-    for (let i = 1; i <= pdfData.numpages; i++) {
-      try {
-        const imageBuffer = await convertPdfToImage(raw, {
+    if (!this.forceImageConversion) {
+      // If not forcing image conversion, use the text content directly
+      return [
+        new Document({
+          pageContent: pdfData.text,
+          metadata: baseMetadata,
+        }),
+      ];
+    }
+
+    try {
+      // Convert each page to image
+      const pages: Buffer[] = [];
+      for (let i = 1; i <= pdfData.numpages; i++) {
+        const imageBuffer = await convertPdfToImage(buffer, {
           pageNumber: i,
           scale: this.pdfImageScale,
           outputFormat: this.pdfImageFormat,
           quality: this.pdfImageQuality,
         });
         pages.push(imageBuffer);
-      } catch (error: unknown) {
-        const err = error as Error;
+      }
+
+      // Process pages
+      const documents = await this.processPages(pages, baseMetadata);
+
+      if (!this.splitPages) {
         return [
           new Document({
-            pageContent: "",
-            metadata: {
-              ...baseMetadata,
-              pdf: {
-                ...baseMetadata.pdf,
-                loc: { pageNumber: i },
-                error: err.message,
-              },
-            },
+            pageContent: documents.map((doc) => doc.pageContent).join("\n\n"),
+            metadata: baseMetadata,
           }),
         ];
       }
-    }
 
-    // Process pages using appropriate method
-    const documents = await this.processPages(pages, baseMetadata);
-
-    if (!this.splitPages) {
+      return documents;
+    } catch (error: unknown) {
+      const err = error as Error;
       return [
         new Document({
-          pageContent: documents.map((doc) => doc.pageContent).join("\n\n"),
-          metadata: baseMetadata,
+          pageContent: "",
+          metadata: {
+            ...baseMetadata,
+            pdf: {
+              ...baseMetadata.pdf,
+              error: err.message,
+            },
+          },
         }),
       ];
     }
+  }
 
-    return documents;
+  public async parse(
+    raw: Buffer,
+    metadata: Document["metadata"]
+  ): Promise<Document[]> {
+    const filePath = metadata.source as string;
+    if (!filePath) {
+      throw new Error("File path is required in metadata.source");
+    }
+
+    const fileExt = path.extname(filePath).toLowerCase();
+    if (!this.supportedImageTypes.includes(fileExt)) {
+      throw new Error(
+        `Unsupported file type. Supported types: ${this.supportedImageTypes.join(", ")}`
+      );
+    }
+
+    try {
+      if (this.isPdfFile(filePath)) {
+        return this.processPdfFile(raw, metadata);
+      } else if (this.isImageFile(filePath)) {
+        return this.processImageFile(raw, metadata);
+      } else {
+        throw new Error(`Unsupported file type: ${fileExt}`);
+      }
+    } catch (error) {
+      const err = error as Error;
+      if (err.message.includes("ENOENT")) {
+        throw new Error(`File not found: ${filePath}`);
+      }
+      throw err;
+    }
   }
 }

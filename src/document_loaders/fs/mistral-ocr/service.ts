@@ -20,11 +20,19 @@ export class MistralOcrService {
     pageNumber?: number
   ): Promise<Document> {
     try {
+      // Determine the image format from the buffer magic numbers
+      let mimeType = "image/png";
+      if (buffer[0] === 0xff && buffer[1] === 0xd8) {
+        mimeType = "image/jpeg";
+      } else if (buffer[0] === 0x52 && buffer[1] === 0x49) {
+        mimeType = "image/webp";
+      }
+
       const response = await this.mistralClient.ocr.process({
         model: this.modelName,
         document: {
           type: "image_url",
-          imageUrl: `data:image/png;base64,${buffer.toString("base64")}`,
+          imageUrl: `data:${mimeType};base64,${buffer.toString("base64")}`,
         },
         includeImageBase64: true,
       });
