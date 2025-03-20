@@ -29,6 +29,8 @@ jobs:
         
       - name: Run tests
         run: npm test
+        env:
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
         
       - name: Check build
         run: npm run build
@@ -59,9 +61,13 @@ jobs:
         
       - name: Run unit tests with coverage
         run: npm run test:coverage
+        env:
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
         
       - name: Run integration tests
         run: npm run test:integration
+        env:
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
         
       - name: Upload coverage reports
         uses: codecov/codecov-action@v3
