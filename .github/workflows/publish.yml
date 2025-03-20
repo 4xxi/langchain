@@ -1,0 +1,73 @@
+name: Publish Package
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version bump type (major, minor, patch)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+      dry-run:
+        description: 'Dry run (no actual publish to npm)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org/'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build package
+        run: npm run build
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+      - name: Bump version
+        run: |
+          npm version ${{ github.event.inputs.version }} --no-git-tag-version
+          VERSION=$(node -p "require('./package.json').version")
+          echo "NEW_VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Create Git tag
+        run: |
+          git add package.json
+          git commit -m "chore: bump version to v${{ env.NEW_VERSION }}"
+          git tag -a "v${{ env.NEW_VERSION }}" -m "Release v${{ env.NEW_VERSION }}"
+
+      - name: Publish to npm
+        if: ${{ github.event.inputs.dry-run == 'false' }}
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Dry run (no publish)
+        if: ${{ github.event.inputs.dry-run == 'true' }}
+        run: npm publish --dry-run --access public
+
+      - name: Push changes
+        if: ${{ github.event.inputs.dry-run == 'false' }}
+        run: git push && git push --tags 

@@ -1,0 +1,77 @@
+{
+  "name": "@4xxi/langchain",
+  "version": "0.0.1",
+  "private": false,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.js"
+    },
+    "./document_loaders/fs/mistral-ocr": {
+      "types": "./dist/document_loaders/fs/mistral-ocr/index.d.ts",
+      "import": "./dist/document_loaders/fs/mistral-ocr/index.js",
+      "require": "./dist/document_loaders/fs/mistral-ocr/index.cjs",
+      "default": "./dist/document_loaders/fs/mistral-ocr/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node build.js",
+    "build:watch": "node build.watch.js",
+    "clean": "rm -rf dist/",
+    "lint": "eslint src && dpdm --exit-code circular:1 src/index.ts",
+    "lint:fix": "eslint --fix src",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "dependencies": {
+    "@langchain/core": "^0.3.42",
+    "@mistralai/mistralai": "^1.5.2",
+    "dotenv": "^16.4.7",
+    "langchain": "^0.3.19",
+    "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^5.0.375",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/pdf-parse": "^1.1.4",
+    "@typescript-eslint/eslint-plugin": "^8.27.0",
+    "@typescript-eslint/parser": "^8.27.0",
+    "dpdm": "^3.14.0",
+    "esbuild": "^0.25.1",
+    "eslint": "^9.22.0",
+    "eslint-config-prettier": "^10.1.1",
+    "eslint-plugin-prettier": "^5.2.3",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.9"
+  },
+  "keywords": [
+    "langchain",
+    "mistral",
+    "ocr",
+    "document",
+    "parser"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/4xxi/langchain.git"
+  }
+}
