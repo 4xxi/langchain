@@ -77,8 +77,12 @@ export class MistralOcrLoader extends BufferLoader {
         },
       };
     } catch (error) {
-      console.warn("Error parsing PDF metadata:", error);
+      // Explicitly ensure we're using console.warn with the expected format for bad XRef entries
+      const errorObj =
+        error instanceof Error ? error : new Error(String(error));
+      console.warn("Error parsing PDF metadata:", errorObj);
       // If we can't parse the PDF metadata, we'll just use the original metadata
+      // Do not include the pdf property in case of errors
       baseMetadata = metadata;
     }
 
