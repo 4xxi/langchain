@@ -3,7 +3,7 @@ import { Document } from "langchain/document";
 import { BufferLoader } from "langchain/document_loaders/fs/buffer";
 import path from "path";
 import pdfParse from "pdf-parse";
-import { MistralOcrService } from "./service.js";
+import { DocumentMetadata, MistralOcrService } from "./service.js";
 
 export interface MistralOcrLoaderConfig {
   apiKey: string;
@@ -52,8 +52,8 @@ export class MistralOcrLoader extends BufferLoader {
 
   private async processImageFile(
     buffer: Buffer,
-    metadata: Document["metadata"]
-  ): Promise<Document[]> {
+    metadata: DocumentMetadata
+  ): Promise<Document<DocumentMetadata>[]> {
     // For image files, we process directly through Mistral's OCR API
     const doc = await this.ocrService.processImage(buffer, metadata);
     return [doc];
@@ -61,8 +61,8 @@ export class MistralOcrLoader extends BufferLoader {
 
   private async processPdfFile(
     buffer: Buffer,
-    metadata: Document["metadata"]
-  ): Promise<Document[]> {
+    metadata: DocumentMetadata
+  ): Promise<Document<DocumentMetadata>[]> {
     // Extract PDF metadata only
     let baseMetadata = metadata;
     try {
@@ -101,7 +101,7 @@ export class MistralOcrLoader extends BufferLoader {
     return documents;
   }
 
-  public override async load(): Promise<Document[]> {
+  public override async load(): Promise<Document<DocumentMetadata>[]> {
     try {
       const filePath = this.filePathOrBlob as string;
 
@@ -114,7 +114,7 @@ export class MistralOcrLoader extends BufferLoader {
 
       // Read file and get metadata
       const buffer = await fs.promises.readFile(filePath);
-      const metadata = { source: filePath };
+      const metadata: DocumentMetadata = { source: filePath };
 
       // Parse the buffer
       return this.parse(buffer, metadata);
@@ -126,8 +126,8 @@ export class MistralOcrLoader extends BufferLoader {
 
   public async parse(
     raw: Buffer,
-    metadata: Document["metadata"]
-  ): Promise<Document[]> {
+    metadata: DocumentMetadata
+  ): Promise<Document<DocumentMetadata>[]> {
     try {
       const filePath = metadata.source as string;
       if (!filePath) {

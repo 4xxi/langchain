@@ -1,6 +1,6 @@
 import { Document } from "langchain/document";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MistralOcrService } from "./service";
+import { DocumentMetadata, MistralOcrService } from "./service";
 
 // Mock implementation for the Mistral OCR process API
 const mockOcrProcess = vi.fn().mockResolvedValue({
@@ -40,7 +40,7 @@ describe("MistralOcrService", () => {
 
   describe("processImage", () => {
     const testBuffer = Buffer.from("test");
-    const testMetadata = { source: "test.jpg" };
+    const testMetadata: DocumentMetadata = { source: "test.jpg" };
 
     it("should process an image successfully", async () => {
       const result = await service.processImage(testBuffer, testMetadata);
@@ -63,7 +63,7 @@ describe("MistralOcrService", () => {
         0x00,
         ...Array(100).fill(0),
       ]);
-      const tiffMetadata = { source: "test.tiff" };
+      const tiffMetadata: DocumentMetadata = { source: "test.tiff" };
 
       await service.processImage(tiffBuffer, tiffMetadata);
 
@@ -86,7 +86,7 @@ describe("MistralOcrService", () => {
         0x2a,
         ...Array(100).fill(0),
       ]);
-      const tiffMetadata = { source: "test.tiff" };
+      const tiffMetadata: DocumentMetadata = { source: "test.tiff" };
 
       await service.processImage(tiffBuffer, tiffMetadata);
 
@@ -119,7 +119,7 @@ describe("MistralOcrService", () => {
 
   describe("processPdf", () => {
     const testBuffer = Buffer.from("test");
-    const testMetadata = { source: "test.pdf" };
+    const testMetadata: DocumentMetadata = { source: "test.pdf" };
 
     it("should process a PDF successfully", async () => {
       mockOcrProcess.mockResolvedValueOnce({

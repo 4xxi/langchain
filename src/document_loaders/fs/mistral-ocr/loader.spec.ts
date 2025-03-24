@@ -1,7 +1,7 @@
 import { Document } from "langchain/document";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MistralOcrLoader } from "./loader";
-import { MistralOcrService } from "./service";
+import { DocumentMetadata, MistralOcrService } from "./service";
 
 // Mock dependencies
 vi.mock("pdf-parse", () => ({
@@ -41,17 +41,17 @@ describe("MistralOcrLoader", () => {
   });
 
   describe("parse", () => {
-    const mockMetadata = { source: "test.pdf" };
+    const mockMetadata: DocumentMetadata = { source: "test.pdf" };
 
     it("should throw error if file path is missing in metadata", async () => {
-      await expect(loader.parse(mockBuffer, {})).rejects.toThrow(
-        "File path is required in metadata.source"
-      );
+      await expect(
+        loader.parse(mockBuffer, {} as DocumentMetadata)
+      ).rejects.toThrow("File path is required in metadata.source");
     });
 
     it("should throw error for unsupported file type", async () => {
       await expect(
-        loader.parse(mockBuffer, { source: "test.xyz" })
+        loader.parse(mockBuffer, { source: "test.xyz" } as DocumentMetadata)
       ).rejects.toThrow("Unsupported file type");
     });
 
@@ -182,7 +182,9 @@ describe("MistralOcrLoader", () => {
       });
 
       it("should process image files directly", async () => {
-        const docs = await loader.parse(mockBuffer, { source: "test.jpg" });
+        const docs = await loader.parse(mockBuffer, {
+          source: "test.jpg",
+        } as DocumentMetadata);
         expect(docs).toHaveLength(1);
         expect(MistralOcrService.prototype.processImage).toHaveBeenCalledWith(
           mockBuffer,
@@ -207,7 +209,7 @@ describe("MistralOcrLoader", () => {
           });
           const docs = await loader.parse(mockBuffer, {
             source: `test${format}`,
-          });
+          } as DocumentMetadata);
           expect(docs).toHaveLength(1);
         }
       });

@@ -16,7 +16,7 @@ interface ImageMetadata {
   image_base64?: string;
 }
 
-interface DocumentMetadata extends Document["metadata"] {
+export interface DocumentMetadata extends Record<string, any> {
   source: string;
   images?: ImageMetadata[];
   dimensions?: OCRPageDimensions | null;
@@ -38,8 +38,8 @@ export class MistralOcrService {
    */
   async processImage(
     buffer: Buffer,
-    metadata: Document["metadata"]
-  ): Promise<Document> {
+    metadata: DocumentMetadata
+  ): Promise<Document<DocumentMetadata>> {
     try {
       // Determine the image format from the buffer magic numbers
       let mimeType = "image/png";
@@ -99,7 +99,7 @@ export class MistralOcrService {
       const page = response.pages[0];
 
       // Create output metadata merging input metadata with OCR results
-      const outputMetadata: Document["metadata"] = {
+      const outputMetadata: DocumentMetadata = {
         ...metadata,
         images:
           page.images?.map((image: OCRImageObject) => ({
@@ -139,8 +139,8 @@ export class MistralOcrService {
    */
   async processPdf(
     buffer: Buffer,
-    metadata: Document["metadata"]
-  ): Promise<Document[]> {
+    metadata: DocumentMetadata
+  ): Promise<Document<DocumentMetadata>[]> {
     try {
       const response = await this.mistralClient.ocr.process({
         model: this.modelName,
@@ -157,7 +157,7 @@ export class MistralOcrService {
 
       return response.pages.map((page, index) => {
         // Create base metadata from input
-        const newMetadata: Document["metadata"] = {
+        const newMetadata: DocumentMetadata = {
           ...metadata,
           images:
             page.images?.map((image: OCRImageObject) => ({
