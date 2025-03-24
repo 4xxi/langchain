@@ -75,10 +75,10 @@ describe("MistralOcrLoader Integration", () => {
         expect(doc.pageContent).toBeTruthy();
         expect(doc.metadata).toBeDefined();
         expect(doc.metadata.pdf).toBeDefined();
-        expect(doc.metadata.pdf.loc.pageNumber).toBe(index + 1);
-        expect(doc.metadata.pdf.version).toBeDefined();
-        expect(doc.metadata.pdf.info).toBeDefined();
-        expect(doc.metadata.pdf.totalPages).toBeGreaterThan(0);
+        expect(doc.metadata.pdf!.loc.pageNumber).toBe(index + 1);
+        expect(doc.metadata.pdf!.version).toBeDefined();
+        expect(doc.metadata.pdf!.info).toBeDefined();
+        expect(doc.metadata.pdf!.totalPages).toBeGreaterThan(0);
       });
     }, 30000);
 
@@ -93,9 +93,9 @@ describe("MistralOcrLoader Integration", () => {
       expect(docs).toHaveLength(1);
       expect(docs[0].pageContent).toBeTruthy();
       expect(docs[0].metadata.pdf).toBeDefined();
-      expect(docs[0].metadata.pdf.version).toBeDefined();
-      expect(docs[0].metadata.pdf.info).toBeDefined();
-      expect(docs[0].metadata.pdf.totalPages).toBeGreaterThan(0);
+      expect(docs[0].metadata.pdf!.version).toBeDefined();
+      expect(docs[0].metadata.pdf!.info).toBeDefined();
+      expect(docs[0].metadata.pdf!.totalPages).toBeGreaterThan(0);
     }, 30000);
 
     it("should process a larger PDF file", async () => {
@@ -113,10 +113,10 @@ describe("MistralOcrLoader Integration", () => {
         expect(doc.pageContent).toBeTruthy();
         expect(doc.metadata).toBeDefined();
         expect(doc.metadata.pdf).toBeDefined();
-        expect(doc.metadata.pdf.loc.pageNumber).toBe(index + 1);
-        expect(doc.metadata.pdf.version).toBeDefined();
-        expect(doc.metadata.pdf.info).toBeDefined();
-        expect(doc.metadata.pdf.totalPages).toBeGreaterThan(0);
+        expect(doc.metadata.pdf!.loc.pageNumber).toBe(index + 1);
+        expect(doc.metadata.pdf!.version).toBeDefined();
+        expect(doc.metadata.pdf!.info).toBeDefined();
+        expect(doc.metadata.pdf!.totalPages).toBeGreaterThan(0);
       });
     }, 60000);
   });
