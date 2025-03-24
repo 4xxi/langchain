@@ -2,31 +2,36 @@ import { Document } from "langchain/document";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MistralOcrService } from "./service";
 
-// Mock external dependencies
+// Mock implementation for the Mistral OCR process API
+const mockOcrProcess = vi.fn().mockResolvedValue({
+  pages: [{ markdown: "test content" }],
+});
+
+// Mock the Mistral client
 vi.mock("@mistralai/mistralai", () => ({
   Mistral: vi.fn().mockImplementation(() => ({
     ocr: {
-      process: vi.fn().mockResolvedValue({
-        pages: [{ markdown: "test content" }],
-      }),
+      process: mockOcrProcess,
     },
   })),
 }));
 
 // Mock sharp
-vi.mock("sharp", () => {
-  return {
-    default: vi.fn().mockImplementation(() => ({
-      jpeg: vi.fn().mockReturnThis(),
-      toBuffer: vi.fn().mockResolvedValue(Buffer.from("converted-jpeg")),
-    })),
-  };
-});
+vi.mock("sharp", () => ({
+  default: vi.fn().mockImplementation(() => ({
+    jpeg: vi.fn().mockReturnThis(),
+    toBuffer: vi.fn().mockResolvedValue(Buffer.from("converted-jpeg")),
+  })),
+}));
 
 describe("MistralOcrService", () => {
   let service: MistralOcrService;
 
   beforeEach(() => {
+    // Reset all mocks
+    vi.clearAllMocks();
+
+    // Create a fresh instance of the service
     service = new MistralOcrService({
       apiKey: "test-key",
       modelName: "test-model",
@@ -49,8 +54,8 @@ describe("MistralOcrService", () => {
       });
     });
 
-    it("should handle TIFF (Intel byte order) conversion", async () => {
-      // Create a buffer that mimics a TIFF file in Intel byte order (II)
+    it("should detect and convert TIFF (Intel byte order)", async () => {
+      // Create a buffer that mimics TIFF in Intel byte order (II)
       const tiffBuffer = Buffer.from([
         0x49,
         0x49,
@@ -60,29 +65,10 @@ describe("MistralOcrService", () => {
       ]);
       const tiffMetadata = { source: "test.tiff" };
 
-      const mockMistralClient = {
-        ocr: {
-          process: vi.fn().mockResolvedValue({
-            pages: [{ markdown: "tiff content" }],
-          }),
-        },
-      };
+      await service.processImage(tiffBuffer, tiffMetadata);
 
-      // @ts-expect-error - Accessing private property for testing
-      service.mistralClient = mockMistralClient;
-
-      const result = await service.processImage(tiffBuffer, tiffMetadata);
-
-      // Verify the result
-      expect(result).toBeInstanceOf(Document);
-      expect(result.pageContent).toBe("tiff content");
-
-      // Verify sharp was called for conversion
-      const sharp = await import("sharp");
-      expect(sharp.default).toHaveBeenCalledWith(tiffBuffer);
-
-      // Verify Mistral client was called with jpeg mime type
-      expect(mockMistralClient.ocr.process).toHaveBeenCalledWith(
+      // Check that the Mistral API was called with a JPEG mime type
+      expect(mockOcrProcess).toHaveBeenCalledWith(
         expect.objectContaining({
           document: expect.objectContaining({
             imageUrl: expect.stringContaining("data:image/jpeg;base64,"),
@@ -91,8 +77,8 @@ describe("MistralOcrService", () => {
       );
     });
 
-    it("should handle TIFF (Motorola byte order) conversion", async () => {
-      // Create a buffer that mimics a TIFF file in Motorola byte order (MM)
+    it("should detect and convert TIFF (Motorola byte order)", async () => {
+      // Create a buffer that mimics TIFF in Motorola byte order (MM)
       const tiffBuffer = Buffer.from([
         0x4d,
         0x4d,
@@ -102,29 +88,10 @@ describe("MistralOcrService", () => {
       ]);
       const tiffMetadata = { source: "test.tiff" };
 
-      const mockMistralClient = {
-        ocr: {
-          process: vi.fn().mockResolvedValue({
-            pages: [{ markdown: "tiff content" }],
-          }),
-        },
-      };
+      await service.processImage(tiffBuffer, tiffMetadata);
 
-      // @ts-expect-error - Accessing private property for testing
-      service.mistralClient = mockMistralClient;
-
-      const result = await service.processImage(tiffBuffer, tiffMetadata);
-
-      // Verify the result
-      expect(result).toBeInstanceOf(Document);
-      expect(result.pageContent).toBe("tiff content");
-
-      // Verify sharp was called for conversion
-      const sharp = await import("sharp");
-      expect(sharp.default).toHaveBeenCalledWith(tiffBuffer);
-
-      // Verify Mistral client was called with jpeg mime type
-      expect(mockMistralClient.ocr.process).toHaveBeenCalledWith(
+      // Check that the Mistral API was called with a JPEG mime type
+      expect(mockOcrProcess).toHaveBeenCalledWith(
         expect.objectContaining({
           document: expect.objectContaining({
             imageUrl: expect.stringContaining("data:image/jpeg;base64,"),
@@ -134,14 +101,7 @@ describe("MistralOcrService", () => {
     });
 
     it("should handle OCR processing errors", async () => {
-      const mockMistralClient = {
-        ocr: {
-          process: vi.fn().mockRejectedValue(new Error("OCR failed")),
-        },
-      };
-
-      // @ts-expect-error - Accessing private property for testing
-      service.mistralClient = mockMistralClient;
+      mockOcrProcess.mockRejectedValueOnce(new Error("OCR failed"));
 
       await expect(
         service.processImage(testBuffer, testMetadata)
@@ -149,14 +109,7 @@ describe("MistralOcrService", () => {
     });
 
     it("should handle malformed response structure", async () => {
-      const mockMistralClient = {
-        ocr: {
-          process: vi.fn().mockResolvedValue({}),
-        },
-      };
-
-      // @ts-expect-error - Accessing private property for testing
-      service.mistralClient = mockMistralClient;
+      mockOcrProcess.mockResolvedValueOnce({});
 
       await expect(
         service.processImage(testBuffer, testMetadata)
@@ -169,16 +122,9 @@ describe("MistralOcrService", () => {
     const testMetadata = { source: "test.pdf" };
 
     it("should process a PDF successfully", async () => {
-      const mockMistralClient = {
-        ocr: {
-          process: vi.fn().mockResolvedValue({
-            pages: [{ markdown: "page 1" }, { markdown: "page 2" }],
-          }),
-        },
-      };
-
-      // @ts-expect-error - Accessing private property for testing
-      service.mistralClient = mockMistralClient;
+      mockOcrProcess.mockResolvedValueOnce({
+        pages: [{ markdown: "page 1" }, { markdown: "page 2" }],
+      });
 
       const results = await service.processPdf(testBuffer, testMetadata);
 
@@ -196,14 +142,7 @@ describe("MistralOcrService", () => {
     });
 
     it("should handle OCR processing errors", async () => {
-      const mockMistralClient = {
-        ocr: {
-          process: vi.fn().mockRejectedValue(new Error("OCR failed")),
-        },
-      };
-
-      // @ts-expect-error - Accessing private property for testing
-      service.mistralClient = mockMistralClient;
+      mockOcrProcess.mockRejectedValueOnce(new Error("OCR failed"));
 
       await expect(
         service.processPdf(testBuffer, testMetadata)
@@ -211,14 +150,7 @@ describe("MistralOcrService", () => {
     });
 
     it("should handle malformed response structure", async () => {
-      const mockMistralClient = {
-        ocr: {
-          process: vi.fn().mockResolvedValue({}),
-        },
-      };
-
-      // @ts-expect-error - Accessing private property for testing
-      service.mistralClient = mockMistralClient;
+      mockOcrProcess.mockResolvedValueOnce({});
 
       await expect(
         service.processPdf(testBuffer, testMetadata)

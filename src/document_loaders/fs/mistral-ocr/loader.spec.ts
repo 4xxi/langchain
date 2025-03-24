@@ -82,6 +82,36 @@ describe("MistralOcrLoader", () => {
         expect(docs[0].metadata.pdf).toHaveProperty("version", "v1.10.100");
       });
 
+      it("should handle PDF metadata parsing errors gracefully", async () => {
+        const pdfParse = (await import("pdf-parse")).default;
+        vi.mocked(pdfParse).mockRejectedValueOnce(
+          new Error("PDF parsing failed")
+        );
+
+        vi.mocked(MistralOcrService.prototype.processPdf).mockResolvedValueOnce(
+          [
+            new Document({
+              pageContent: "test content",
+              metadata: { source: "test.pdf" },
+            }),
+          ]
+        );
+
+        const consoleSpy = vi
+          .spyOn(console, "warn")
+          .mockImplementation(() => {});
+        const docs = await loader.parse(mockBuffer, mockMetadata);
+
+        expect(consoleSpy).toHaveBeenCalledWith(
+          "Error parsing PDF metadata:",
+          expect.any(Error)
+        );
+        expect(docs).toHaveLength(1);
+        expect(docs[0].metadata).not.toHaveProperty("pdf");
+
+        consoleSpy.mockRestore();
+      });
+
       it("should combine pages when splitPages is false", async () => {
         loader = new MistralOcrLoader("test.pdf", {
           apiKey: mockApiKey,

@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { MistralOcrLoader } from "./loader";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,6 +23,7 @@ describe("MistralOcrLoader Integration", () => {
   let exampleDataDir: string;
   let samplePdfPath: string;
   let largerPdfPath: string;
+  let badXRefPdfPath: string;
 
   beforeAll(() => {
     // Try loading from .env.test.local first
@@ -47,10 +48,12 @@ describe("MistralOcrLoader Integration", () => {
     // Set up test file paths
     samplePdfPath = path.resolve(exampleDataDir, "file-sample_150kB.pdf");
     largerPdfPath = path.resolve(exampleDataDir, "nke-10k-2023.pdf");
+    badXRefPdfPath = path.resolve(exampleDataDir, "OCR_Results_1.pdf");
 
     // Verify test files exist
     verifyFileExists(samplePdfPath);
     verifyFileExists(largerPdfPath);
+    verifyFileExists(badXRefPdfPath);
   });
 
   describe("PDF Processing", () => {
@@ -151,6 +154,34 @@ describe("MistralOcrLoader Integration", () => {
   });
 
   describe("Error Handling", () => {
+    it("should handle PDF with bad XRef entry", async () => {
+      const loader = new MistralOcrLoader(badXRefPdfPath, {
+        apiKey,
+        splitPages: true,
+        modelName: "mistral-ocr-latest",
+      });
+
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const docs = await loader.load();
+
+      // Verify warning was logged
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "Error parsing PDF metadata:",
+        expect.any(Error)
+      );
+
+      // Verify document was still processed
+      expect(docs.length).toBeGreaterThan(0);
+      docs.forEach((doc) => {
+        expect(doc.pageContent).toBeTruthy();
+        expect(doc.metadata).toBeDefined();
+        // PDF metadata should not be present due to parsing error
+        expect(doc.metadata).not.toHaveProperty("pdf");
+      });
+
+      consoleSpy.mockRestore();
+    }, 30000);
+
     it("should handle non-existent file", async () => {
       const loader = new MistralOcrLoader("non-existent.pdf", {
         apiKey,

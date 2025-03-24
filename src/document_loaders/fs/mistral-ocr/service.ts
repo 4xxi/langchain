@@ -80,6 +80,7 @@ export class MistralOcrService {
               image_base64: image.imageBase64 ?? undefined,
             })) || [],
           dimensions: page.dimensions || null,
+          loc: { pageNumber: 1 },
         },
       });
     } catch (error) {
@@ -114,25 +115,31 @@ export class MistralOcrService {
       }
 
       return response.pages.map((page, index) => {
+        const newMetadata: Document["metadata"] = {
+          ...metadata,
+          images:
+            page.images?.map((image: OCRImageObject) => ({
+              id: image.id,
+              top_left_x: image.topLeftX ?? 0,
+              top_left_y: image.topLeftY ?? 0,
+              bottom_right_x: image.bottomRightX ?? 0,
+              bottom_right_y: image.bottomRightY ?? 0,
+              image_base64: image.imageBase64 ?? undefined,
+            })) || [],
+          dimensions: page.dimensions || null,
+          loc: { pageNumber: index + 1 },
+        };
+
+        // Only add PDF metadata if it exists in the input metadata
+        if (metadata.pdf) {
+          newMetadata.pdf = {
+            ...metadata.pdf,
+          };
+        }
+
         return new Document({
           pageContent: page.markdown || "",
-          metadata: {
-            ...metadata,
-            pdf: {
-              ...metadata.pdf,
-              loc: { pageNumber: index + 1 },
-            },
-            images:
-              page.images?.map((image: OCRImageObject) => ({
-                id: image.id,
-                top_left_x: image.topLeftX ?? 0,
-                top_left_y: image.topLeftY ?? 0,
-                bottom_right_x: image.bottomRightX ?? 0,
-                bottom_right_y: image.bottomRightY ?? 0,
-                image_base64: image.imageBase64 ?? undefined,
-              })) || [],
-            dimensions: page.dimensions || null,
-          },
+          metadata: newMetadata,
         });
       });
     } catch (error) {

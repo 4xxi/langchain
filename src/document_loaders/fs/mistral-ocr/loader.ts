@@ -64,16 +64,23 @@ export class MistralOcrLoader extends BufferLoader {
     metadata: Document["metadata"]
   ): Promise<Document[]> {
     // Extract PDF metadata only
-    const pdfData = await pdfParse(buffer);
-    const baseMetadata = {
-      ...metadata,
-      pdf: {
-        version: pdfData.version,
-        info: pdfData.info,
-        metadata: pdfData.metadata,
-        totalPages: pdfData.numpages,
-      },
-    };
+    let baseMetadata = metadata;
+    try {
+      const pdfData = await pdfParse(buffer);
+      baseMetadata = {
+        ...metadata,
+        pdf: {
+          version: pdfData.version,
+          info: pdfData.info,
+          metadata: pdfData.metadata,
+          totalPages: pdfData.numpages,
+        },
+      };
+    } catch (error) {
+      console.warn("Error parsing PDF metadata:", error);
+      // If we can't parse the PDF metadata, we'll just use the original metadata
+      baseMetadata = metadata;
+    }
 
     // Process PDF through Mistral's OCR API
     const documents = await this.ocrService.processPdf(buffer, baseMetadata);
