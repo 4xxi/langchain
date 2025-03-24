@@ -18,7 +18,10 @@ async function main() {
   }
 
   // Path to your PDF file - using the sample file
-  const pdfPath = path.join(__dirname, "../example_data/file-sample_150kB.pdf");
+  const pdfPath = path.join(
+    __dirname,
+    "../../example_data/file-sample_150kB.pdf"
+  );
 
   // Initialize the loader
   const loader = new MistralOcrLoader(pdfPath, {

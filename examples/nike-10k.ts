@@ -16,13 +16,12 @@ async function main() {
   }
 
   // Path to Nike's 10-K report
-  const pdfPath = path.join(__dirname, "../example_data/nke-10k-2023.pdf");
+  const pdfPath = path.join(__dirname, "../../example_data/nke-10k-2023.pdf");
 
   // Initialize the loader with specific settings for large documents
   const loader = new MistralOcrLoader(pdfPath, {
     apiKey,
     splitPages: true,
-    forceSingleMode: true, // Process each page individually for reliability
     modelName: "mistral-ocr-latest",
   });
 

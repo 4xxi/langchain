@@ -1,7 +1,10 @@
 import fs from "fs";
 import path from "path";
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import sharp from "sharp";
+// Create a factory function to dynamically import pdfjs-dist
+async function getPdfLib() {
+  return import("pdfjs-dist/legacy/build/pdf.mjs");
+}
 
 // CMap and font configurations
 const CMAP_URL = path.join(process.cwd(), "node_modules/pdfjs-dist/cmaps/");
@@ -40,6 +43,9 @@ export async function convertPdfToImage(
     const outputFormat = options.outputFormat || "png";
     const quality = options.quality || 100;
     const pageNumber = options.pageNumber || 1;
+
+    // Dynamically import pdfjs-dist
+    const { getDocument } = await getPdfLib();
 
     // Load the PDF document
     let pdfData: Uint8Array;
@@ -143,6 +149,9 @@ export async function convertPdfToImages(
     } else {
       pdfData = new Uint8Array(input);
     }
+
+    // Dynamically import pdfjs-dist
+    const { getDocument } = await getPdfLib();
 
     const loadingTask = getDocument({
       data: pdfData,

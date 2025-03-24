@@ -1,5 +1,9 @@
 import path from "path";
-import { getDocument, version } from "pdfjs-dist/legacy/build/pdf.mjs";
+// Create a factory function to dynamically import pdfjs-dist
+async function getPdfLib() {
+  return import("pdfjs-dist/legacy/build/pdf.mjs");
+}
+
 // CMap and font configurations
 const CMAP_URL = path.join(process.cwd(), "node_modules/pdfjs-dist/cmaps/");
 const CMAP_PACKED = true;
@@ -106,6 +110,9 @@ export async function parsePDF(
     ...options,
   };
 
+  // Dynamically import pdfjs-dist
+  const { getDocument, version } = await getPdfLib();
+
   // Initialize result object
   const result: PDFParseResult = {
     numpages: 0,
@@ -113,7 +120,7 @@ export async function parsePDF(
     info: null,
     metadata: null,
     text: "",
-    version: version, // Hard-coded version as we're not importing the full pdfjsLib
+    version: version,
   };
 
   try {
