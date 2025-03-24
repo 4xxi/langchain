@@ -1,6 +1,5 @@
 import path from "path";
-import { version } from "pdfjs-dist";
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { getDocument, version } from "pdfjs-dist/legacy/build/pdf.mjs";
 // CMap and font configurations
 const CMAP_URL = path.join(process.cwd(), "node_modules/pdfjs-dist/cmaps/");
 const CMAP_PACKED = true;

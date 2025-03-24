@@ -2,7 +2,7 @@ import fs from "fs";
 import { Document } from "langchain/document";
 import { BufferLoader } from "langchain/document_loaders/fs/buffer";
 import path from "path";
-import pdfParse from "pdf-parse";
+import { parsePDF } from "../../../pdf-utils/pdf-parser/pdf-parser.js";
 import { DocumentMetadata, MistralOcrService } from "./service.js";
 
 export interface MistralOcrLoaderConfig {
@@ -66,7 +66,8 @@ export class MistralOcrLoader extends BufferLoader {
     // Extract PDF metadata only
     let baseMetadata = metadata;
     try {
-      const pdfData = await pdfParse(buffer);
+      // Convert buffer to Uint8Array for pdf-parser
+      const pdfData = await parsePDF(new Uint8Array(buffer));
       baseMetadata = {
         ...metadata,
         pdf: {
