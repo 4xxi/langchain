@@ -119,13 +119,15 @@ describe("MistralOcrLoader Integration", () => {
   });
 
   describe("Image Processing", () => {
-    const imageFormats = [".jpg", ".png", ".webp"];
+    const imageFormats = [".jpg", ".png", ".webp", ".tiff"];
     let imagePaths: string[];
 
     beforeAll(() => {
       // Set up and verify all test image paths
       imagePaths = imageFormats.map((format) => {
-        const imagePath = path.resolve(exampleDataDir, `sample${format}`);
+        const fileName =
+          format === ".tiff" ? "file-sample.tiff" : `sample${format}`;
+        const imagePath = path.resolve(exampleDataDir, fileName);
         verifyFileExists(imagePath);
         return imagePath;
       });

@@ -1,6 +1,7 @@
 import { Mistral } from "@mistralai/mistralai";
 import type { OCRImageObject } from "@mistralai/mistralai/models/components/index.js";
 import { Document } from "langchain/document";
+import sharp from "sharp";
 
 export class MistralOcrService {
   private readonly mistralClient: Mistral;
@@ -21,17 +22,41 @@ export class MistralOcrService {
     try {
       // Determine the image format from the buffer magic numbers
       let mimeType = "image/png";
+      let isTiff = false;
+
       if (buffer[0] === 0xff && buffer[1] === 0xd8) {
         mimeType = "image/jpeg";
       } else if (buffer[0] === 0x52 && buffer[1] === 0x49) {
         mimeType = "image/webp";
+      } else if (
+        // TIFF in Intel byte order (II)
+        (buffer[0] === 0x49 &&
+          buffer[1] === 0x49 &&
+          buffer[2] === 0x2a &&
+          buffer[3] === 0x00) ||
+        // TIFF in Motorola byte order (MM)
+        (buffer[0] === 0x4d &&
+          buffer[1] === 0x4d &&
+          buffer[2] === 0x00 &&
+          buffer[3] === 0x2a)
+      ) {
+        mimeType = "image/tiff";
+        isTiff = true;
+      }
+
+      let imageBuffer = buffer;
+
+      // Convert TIFF files to JPEG for better compatibility
+      if (isTiff) {
+        imageBuffer = await sharp(buffer).jpeg({ quality: 90 }).toBuffer();
+        mimeType = "image/jpeg";
       }
 
       const response = await this.mistralClient.ocr.process({
         model: this.modelName,
         document: {
           type: "image_url",
-          imageUrl: `data:${mimeType};base64,${buffer.toString("base64")}`,
+          imageUrl: `data:${mimeType};base64,${imageBuffer.toString("base64")}`,
         },
         includeImageBase64: true,
       });
@@ -59,6 +84,10 @@ export class MistralOcrService {
       });
     } catch (error) {
       const err = error as Error;
+      console.error(
+        "Detailed OCR processing error:",
+        error instanceof Error ? error.stack : error
+      );
       throw new Error(`OCR processing failed: ${err.message}`);
     }
   }
