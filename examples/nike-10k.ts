@@ -1,7 +1,7 @@
-import { MistralOcrLoader } from "@4xxi/langchain/document_loaders/fs/mistral-ocr";
 import * as dotenv from "dotenv";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { MistralOcrLoader } from "../dist/document_loaders/fs/mistral-ocr/index.js";
 
 // Load environment variables
 dotenv.config();

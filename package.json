@@ -30,6 +30,10 @@
   "scripts": {
     "build": "node build.js",
     "build:watch": "node build.watch.js",
+    "build:examples": "node build.examples.js",
+    "run:examples:simple": "node examples/dist/simple.js",
+    "run:examples:nike": "node examples/dist/nike-10k.js",
+    "run:examples": "npm run build:examples && npm run run:examples:simple && npm run run:examples:nike",
     "clean": "rm -rf dist/",
     "lint": "eslint src && dpdm --exit-code circular:1 src/index.ts",
     "lint:fix": "eslint --fix src",
